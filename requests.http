@@ -1,0 +1,99 @@
+@spaceUrl = http://localhost:3001
+@membershipUrl = http://localhost:3002
+@bookingUrl = http://localhost:3004
+
+### 1. Crear una sede (Space)
+# @name sede
+POST {{spaceUrl}}/locations
+Content-Type: application/json
+
+{ "name": "Sede Norte", "city": "Montería", "address": "Carrera 6 #60-10" }
+
+### 2. Crear una sala (Space)
+# @name sala
+POST {{spaceUrl}}/rooms
+Content-Type: application/json
+
+{ "locationId": "{{sede.response.body.id}}", "name": "Sala Sinú", "capacity": 6 }
+
+### 3. Crear un puesto (Space)
+# @name puesto
+POST {{spaceUrl}}/desks
+Content-Type: application/json
+
+{ "locationId": "{{sede.response.body.id}}", "code": "N-01" }
+
+### 4. Crear un miembro (Membership)
+# @name miembro
+POST {{membershipUrl}}/members
+Content-Type: application/json
+
+{ "name": "Carlos Gómez", "email": "carlos@example.com" }
+
+### 5. Crear un plan que solo incluye puestos (Membership)
+# @name plan
+POST {{membershipUrl}}/plans
+Content-Type: application/json
+
+{ "name": "Solo puestos", "price": 250000, "resourceAccess": ["DESK"] }
+
+### 6. Suscribir al miembro (Membership)
+POST {{membershipUrl}}/subscriptions
+Content-Type: application/json
+
+{ "memberId": "{{miembro.response.body.id}}", "planId": "{{plan.response.body.id}}" }
+
+### 7. Reservar el puesto: CONFIRMED, sin cargo (incluido en el plan)
+# @name reservaPuesto
+POST {{bookingUrl}}/bookings
+Content-Type: application/json
+
+{
+  "memberId": "{{miembro.response.body.id}}",
+  "resourceId": "{{puesto.response.body.id}}",
+  "resourceType": "DESK",
+  "startTime": "2026-11-25T14:00:00.000Z",
+  "endTime": "2026-11-25T17:00:00.000Z"
+}
+
+### 8. Reservar la sala: PENDING_PAYMENT con cargo adicional (fuera del plan)
+POST {{bookingUrl}}/bookings
+Content-Type: application/json
+
+{
+  "memberId": "{{miembro.response.body.id}}",
+  "resourceId": "{{sala.response.body.id}}",
+  "resourceType": "ROOM",
+  "startTime": "2026-11-25T15:00:00.000Z",
+  "endTime": "2026-11-25T17:00:00.000Z"
+}
+
+### 9. Reservar el puesto en un horario que se cruza: debe fallar con 409
+POST {{bookingUrl}}/bookings
+Content-Type: application/json
+
+{
+  "memberId": "{{miembro.response.body.id}}",
+  "resourceId": "{{puesto.response.body.id}}",
+  "resourceType": "DESK",
+  "startTime": "2026-11-25T16:00:00.000Z",
+  "endTime": "2026-11-25T18:00:00.000Z"
+}
+
+### 10. Ver la disponibilidad del puesto
+GET {{bookingUrl}}/bookings/availability?resourceId={{puesto.response.body.id}}&from=2026-11-25T00:00:00.000Z&to=2026-11-26T00:00:00.000Z
+
+### 11. Cancelar la reserva del puesto (publica booking.cancelled)
+PATCH {{bookingUrl}}/bookings/{{reservaPuesto.response.body.id}}/cancel
+
+### 12. Reservar otra vez el horario que antes chocaba: ahora debe funcionar
+POST {{bookingUrl}}/bookings
+Content-Type: application/json
+
+{
+  "memberId": "{{miembro.response.body.id}}",
+  "resourceId": "{{puesto.response.body.id}}",
+  "resourceType": "DESK",
+  "startTime": "2026-11-25T16:00:00.000Z",
+  "endTime": "2026-11-25T18:00:00.000Z"
+}

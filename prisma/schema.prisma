@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ResourceType {
+  DESK
+  ROOM
+}
+
+enum BookingStatus {
+  CONFIRMED
+  PENDING_PAYMENT
+  CANCELLED
+}
+
+model Booking {
+  id           String        @id @default(uuid())
+  memberId     String        @map("member_id")
+  resourceId   String        @map("resource_id")
+  resourceType ResourceType  @map("resource_type")
+  locationId   String        @map("location_id")
+  startTime    DateTime      @map("start_time")
+  endTime      DateTime      @map("end_time")
+  status       BookingStatus @default(CONFIRMED)
+  extraCharge  Int           @default(0) @map("extra_charge")
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  @@index([resourceId, startTime])
+  @@index([memberId])
+  @@map("bookings")
+}
+
+model ResourceLock {
+  resourceId String   @id @map("resource_id")
+  version    Int      @default(0)
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("resource_locks")
+}
