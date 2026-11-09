@@ -28,14 +28,14 @@ Content-Type: application/json
 POST {{membershipUrl}}/members
 Content-Type: application/json
 
-{ "name": "Carlos Gómez", "email": "carlos@example.com" }
+{ "name": "Carlos Gómez", "email": "carlos-prod@example.com" }
 
 ### 5. Crear un plan que solo incluye puestos (Membership)
 # @name plan
 POST {{membershipUrl}}/plans
 Content-Type: application/json
 
-{ "name": "Solo puestos", "price": 250000, "resourceAccess": ["DESK"] }
+{ "name": "Solo puestos Prod", "price": 250000, "resourceAccess": ["DESK"] }
 
 ### 6. Suscribir al miembro (Membership)
 POST {{membershipUrl}}/subscriptions
