@@ -4,6 +4,8 @@ import { ResourceType } from '@prisma/client';
 export interface SpaceResource {
   id: string;
   locationId: string;
+  hourlyRate: number;
+  location: { name: string; city: string; country: string; currency: string };
 }
 
 @Injectable()

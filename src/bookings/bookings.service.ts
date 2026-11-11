@@ -1,20 +1,17 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { BookingStatus, ResourceType } from '@prisma/client';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BookingStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { EventsService } from '../events/events.service.js';
 import { SpaceClient } from './space.client.js';
 import { MembershipClient } from './membership.client.js';
 import { CreateBookingDto } from './dto/create-booking.dto.js';
 
-const HOURLY_RATE: Record<ResourceType, number> = {
-  ROOM: 30000,
-  DESK: 15000,
-};
-
 const ACTIVE_STATUSES = [BookingStatus.CONFIRMED, BookingStatus.PENDING_PAYMENT];
 
 @Injectable()
 export class BookingsService {
+  private readonly logger = new Logger(BookingsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
@@ -32,16 +29,14 @@ export class BookingsService {
       throw new BadRequestException('No se puede reservar en el pasado');
     }
 
-    // 1. Membership: ¿membresía activa? ¿el plan incluye este tipo de recurso?
     const subscription = await this.membership.getActiveSubscription(dto.memberId);
-    // 2. Space: ¿existe el recurso? ¿en qué sede está?
     const resource = await this.space.getResource(dto.resourceType, dto.resourceId);
 
     const includedInPlan = subscription.plan.resourceAccess.includes(dto.resourceType);
     const hours = (endTime.getTime() - startTime.getTime()) / (60 * 60 * 1000);
-    const extraCharge = includedInPlan ? 0 : Math.ceil(hours * HOURLY_RATE[dto.resourceType]);
+    const extraCharge = includedInPlan ? 0 : Math.ceil(hours * resource.hourlyRate);
+    const currency = resource.location.currency;
 
-    // 3. Transacción con bloqueo optimista sobre el recurso
     const booking = await this.prisma.$transaction(async (tx) => {
       const lock = await tx.resourceLock.upsert({
         where: { resourceId: dto.resourceId },
@@ -70,6 +65,7 @@ export class BookingsService {
           startTime,
           endTime,
           extraCharge,
+          currency,
           status: extraCharge > 0 ? BookingStatus.PENDING_PAYMENT : BookingStatus.CONFIRMED,
         },
       });
@@ -85,7 +81,6 @@ export class BookingsService {
       return created;
     });
 
-    // 4. Publicar el evento
     await this.events.publish('booking.created', {
       bookingId: booking.id,
       memberId: booking.memberId,
@@ -96,6 +91,7 @@ export class BookingsService {
       endTime: booking.endTime.toISOString(),
       status: booking.status,
       extraCharge: booking.extraCharge,
+      currency: booking.currency,
     });
 
     return booking;
@@ -148,5 +144,45 @@ export class BookingsService {
       reason: 'CANCELLED_BY_MEMBER',
     });
     return cancelled;
+  }
+
+  // Saga: el pago fue aprobado → se confirma la reserva
+  async confirmPayment(bookingId: string) {
+    const { count } = await this.prisma.booking.updateMany({
+      where: { id: bookingId, status: BookingStatus.PENDING_PAYMENT },
+      data: { status: BookingStatus.CONFIRMED },
+    });
+    if (count === 0) {
+      this.logger.warn(`La reserva ${bookingId} no estaba pendiente de pago`);
+      return false;
+    }
+    this.logger.log(`Reserva ${bookingId} confirmada: pago aprobado`);
+    return true;
+  }
+
+  // Saga: el pago fue rechazado → compensación, se libera la reserva
+  async releaseForFailedPayment(bookingId: string, reason: string) {
+    const { count } = await this.prisma.booking.updateMany({
+      where: { id: bookingId, status: BookingStatus.PENDING_PAYMENT },
+      data: { status: BookingStatus.CANCELLED },
+    });
+    if (count === 0) {
+      this.logger.warn(`La reserva ${bookingId} no estaba pendiente de pago`);
+      return false;
+    }
+
+    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    if (booking) {
+      await this.events.publish('booking.cancelled', {
+        bookingId: booking.id,
+        memberId: booking.memberId,
+        resourceId: booking.resourceId,
+        startTime: booking.startTime.toISOString(),
+        reason: 'PAYMENT_REJECTED',
+        detail: reason,
+      });
+    }
+    this.logger.log(`Reserva ${bookingId} liberada: ${reason}`);
+    return true;
   }
 }

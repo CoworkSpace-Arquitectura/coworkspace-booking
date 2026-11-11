@@ -28,6 +28,7 @@ model Booking {
   endTime      DateTime      @map("end_time")
   status       BookingStatus @default(CONFIRMED)
   extraCharge  Int           @default(0) @map("extra_charge")
+  currency     String        @default("COP")
   createdAt    DateTime      @default(now()) @map("created_at")
 
   @@index([resourceId, startTime])

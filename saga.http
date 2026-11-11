@@ -1,0 +1,98 @@
+@spaceUrl = http://localhost:3001
+@membershipUrl = http://localhost:3002
+@bookingUrl = http://localhost:3004
+
+### 1. Sede en Colombia (Space)
+# @name sedeCo
+POST {{spaceUrl}}/locations
+Content-Type: application/json
+
+{ "name": "Sede Centro Saga", "city": "Bogotá", "address": "Calle 72 #10-20", "country": "CO", "currency": "COP" }
+
+### 2. Sala en Colombia, $30.000 COP la hora (Space)
+# @name salaCo
+POST {{spaceUrl}}/rooms
+Content-Type: application/json
+
+{ "locationId": "{{sedeCo.response.body.id}}", "name": "Sala Andes", "capacity": 6, "hourlyRate": 30000 }
+
+### 3. Sede en México (Space)
+# @name sedeMx
+POST {{spaceUrl}}/locations
+Content-Type: application/json
+
+{ "name": "Sede Roma Saga", "city": "Ciudad de México", "address": "Calle Orizaba 101", "country": "MX", "currency": "MXN" }
+
+### 4. Sala en México, $350 MXN la hora (Space)
+# @name salaMx
+POST {{spaceUrl}}/rooms
+Content-Type: application/json
+
+{ "locationId": "{{sedeMx.response.body.id}}", "name": "Sala Chapultepec", "capacity": 8, "hourlyRate": 350 }
+
+### 5. Miembro (Membership)
+# @name miembro
+POST {{membershipUrl}}/members
+Content-Type: application/json
+
+{ "name": "Sofía Ruiz", "email": "sofia-saga@example.com" }
+
+### 6. Plan que solo incluye puestos (Membership)
+# @name plan
+POST {{membershipUrl}}/plans
+Content-Type: application/json
+
+{ "name": "Solo puestos Saga", "price": 250000, "resourceAccess": ["DESK"] }
+
+### 7. Suscribir (Membership)
+POST {{membershipUrl}}/subscriptions
+Content-Type: application/json
+
+{ "memberId": "{{miembro.response.body.id}}", "planId": "{{plan.response.body.id}}" }
+
+### 8. Reservar la sala de Colombia 2 horas: $60.000 COP pendiente de pago
+# @name reservaCo
+POST {{bookingUrl}}/bookings
+Content-Type: application/json
+
+{
+  "memberId": "{{miembro.response.body.id}}",
+  "resourceId": "{{salaCo.response.body.id}}",
+  "resourceType": "ROOM",
+  "startTime": "2026-12-01T14:00:00.000Z",
+  "endTime": "2026-12-01T16:00:00.000Z"
+}
+
+### 9. Reservar la sala de México 2 horas: $700 MXN pendiente de pago
+# @name reservaMx
+POST {{bookingUrl}}/bookings
+Content-Type: application/json
+
+{
+  "memberId": "{{miembro.response.body.id}}",
+  "resourceId": "{{salaMx.response.body.id}}",
+  "resourceType": "ROOM",
+  "startTime": "2026-12-02T15:00:00.000Z",
+  "endTime": "2026-12-02T17:00:00.000Z"
+}
+
+### 10. Ver la reserva de Colombia (después de simular el pago aprobado)
+GET {{bookingUrl}}/bookings/{{reservaCo.response.body.id}}
+
+### 11. Ver la reserva de México (después de simular el pago rechazado)
+GET {{bookingUrl}}/bookings/{{reservaMx.response.body.id}}
+
+### Ver todas las reservas
+GET {{bookingUrl}}/bookings
+
+### Nueva reserva en México para probar el pago rechazado
+POST {{bookingUrl}}/bookings
+Content-Type: application/json
+
+{
+  "memberId": "9c922efc-28f3-48d9-bc2f-c12d71da72ca",
+  "resourceId": "bb93fa27-28e9-4849-bf20-b61d727cebca",
+  "resourceType": "ROOM",
+  "startTime": "2026-12-03T15:00:00.000Z",
+  "endTime": "2026-12-03T17:00:00.000Z"
+}

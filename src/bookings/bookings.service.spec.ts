@@ -14,6 +14,7 @@ describe('BookingsService', () => {
   };
   const prisma = {
     $transaction: vi.fn((fn: (client: typeof tx) => Promise<unknown>) => fn(tx)),
+    booking: { updateMany: vi.fn(), findUnique: vi.fn() },
   };
   const events = { publish: vi.fn() };
   const space = { getResource: vi.fn() };
@@ -37,7 +38,12 @@ describe('BookingsService', () => {
       membership as unknown as MembershipClient,
     );
     membership.getActiveSubscription.mockResolvedValue({ id: 'sub-1', plan: { name: 'Solo puestos', resourceAccess: ['DESK'] } });
-    space.getResource.mockResolvedValue({ id: 'resource-1', locationId: 'location-1' });
+    space.getResource.mockResolvedValue({
+      id: 'resource-1',
+      locationId: 'location-1',
+      hourlyRate: 30000,
+      location: { name: 'Sede Centro', city: 'Montería', country: 'CO', currency: 'COP' },
+    });
     tx.resourceLock.upsert.mockResolvedValue({ resourceId: 'resource-1', version: 3 });
     tx.booking.findFirst.mockResolvedValue(null);
     tx.booking.create.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
@@ -98,5 +104,53 @@ describe('BookingsService', () => {
     await expect(service.create(dto())).rejects.toBeInstanceOf(ForbiddenException);
     expect(space.getResource).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+    it('usa la tarifa y la moneda de la sede para el cargo adicional', async () => {
+    space.getResource.mockResolvedValue({
+      id: 'resource-1',
+      locationId: 'location-mx',
+      hourlyRate: 350,
+      location: { name: 'Sede Polanco', city: 'Ciudad de México', country: 'MX', currency: 'MXN' },
+    });
+
+    await service.create(dto(ResourceType.ROOM));
+
+    expect(tx.booking.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ extraCharge: 700, currency: 'MXN' }),
+    });
+  });
+
+  it('confirma la reserva cuando el pago es aprobado', async () => {
+    prisma.booking.updateMany.mockResolvedValue({ count: 1 });
+
+    const confirmed = await service.confirmPayment('booking-1');
+
+    expect(confirmed).toBe(true);
+    expect(prisma.booking.updateMany).toHaveBeenCalledWith({
+      where: { id: 'booking-1', status: 'PENDING_PAYMENT' },
+      data: { status: 'CONFIRMED' },
+    });
+  });
+
+  it('libera la reserva y publica booking.cancelled cuando el pago es rechazado', async () => {
+    prisma.booking.updateMany.mockResolvedValue({ count: 1 });
+    prisma.booking.findUnique.mockResolvedValue({
+      id: 'booking-1',
+      memberId: 'member-1',
+      resourceId: 'resource-1',
+      startTime: new Date('2030-01-15T14:00:00.000Z'),
+    });
+
+    await service.releaseForFailedPayment('booking-1', 'Tarjeta rechazada');
+
+    expect(prisma.booking.updateMany).toHaveBeenCalledWith({
+      where: { id: 'booking-1', status: 'PENDING_PAYMENT' },
+      data: { status: 'CANCELLED' },
+    });
+    expect(events.publish).toHaveBeenCalledWith(
+      'booking.cancelled',
+      expect.objectContaining({ bookingId: 'booking-1', reason: 'PAYMENT_REJECTED' }),
+    );
   });
 });
