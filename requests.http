@@ -1,10 +1,14 @@
 @spaceUrl = http://localhost:3001
 @membershipUrl = http://localhost:3002
 @bookingUrl = http://localhost:3004
+# Identidad que normalmente pone el Gateway (aquí llamamos directo a cada servicio)
+@jefeId = 00000000-0000-0000-0000-000000000001
 
 ### 1. Crear una sede (Space)
 # @name sede
 POST {{spaceUrl}}/locations
+X-Member-Id: {{jefeId}}
+X-Member-Role: OWNER
 Content-Type: application/json
 
 { "name": "Sede Norte", "city": "Montería", "address": "Carrera 6 #60-10" }
@@ -12,6 +16,8 @@ Content-Type: application/json
 ### 2. Crear una sala (Space)
 # @name sala
 POST {{spaceUrl}}/rooms
+X-Member-Id: {{jefeId}}
+X-Member-Role: OWNER
 Content-Type: application/json
 
 { "locationId": "{{sede.response.body.id}}", "name": "Sala Sinú", "capacity": 6 }
@@ -19,6 +25,8 @@ Content-Type: application/json
 ### 3. Crear un puesto (Space)
 # @name puesto
 POST {{spaceUrl}}/desks
+X-Member-Id: {{jefeId}}
+X-Member-Role: OWNER
 Content-Type: application/json
 
 { "locationId": "{{sede.response.body.id}}", "code": "N-01" }
@@ -46,6 +54,8 @@ Content-Type: application/json
 ### 7. Reservar el puesto: CONFIRMED, sin cargo (incluido en el plan)
 # @name reservaPuesto
 POST {{bookingUrl}}/bookings
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 Content-Type: application/json
 
 {
@@ -58,6 +68,8 @@ Content-Type: application/json
 
 ### 8. Reservar la sala: PENDING_PAYMENT con cargo adicional (fuera del plan)
 POST {{bookingUrl}}/bookings
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 Content-Type: application/json
 
 {
@@ -70,6 +82,8 @@ Content-Type: application/json
 
 ### 9. Reservar el puesto en un horario que se cruza: debe fallar con 409
 POST {{bookingUrl}}/bookings
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 Content-Type: application/json
 
 {
@@ -85,9 +99,13 @@ GET {{bookingUrl}}/bookings/availability?resourceId={{puesto.response.body.id}}&
 
 ### 11. Cancelar la reserva del puesto (publica booking.cancelled)
 PATCH {{bookingUrl}}/bookings/{{reservaPuesto.response.body.id}}/cancel
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 
 ### 12. Reservar otra vez el horario que antes chocaba: ahora debe funcionar
 POST {{bookingUrl}}/bookings
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 Content-Type: application/json
 
 {

@@ -18,7 +18,12 @@ const results = await Promise.all(
   Array.from({ length: 5 }, (_, i) =>
     fetch('http://localhost:3004/bookings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Así llega cuando pasa por el Gateway: identidad del socio que reserva
+        'X-Member-Id': memberId,
+        'X-Member-Role': 'MEMBER',
+      },
       body,
     }).then(async (res) => ({ intento: i + 1, status: res.status, body: await res.json() })),
   ),

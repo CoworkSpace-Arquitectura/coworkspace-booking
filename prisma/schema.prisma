@@ -21,6 +21,8 @@ enum BookingStatus {
 model Booking {
   id           String        @id @default(uuid())
   memberId     String        @map("member_id")
+  /// Quién hizo la reserva: el mismo socio, o un gerente/jefe a nombre del cliente
+  bookedBy     String?       @map("booked_by")
   resourceId   String        @map("resource_id")
   resourceType ResourceType  @map("resource_type")
   locationId   String        @map("location_id")
@@ -33,6 +35,7 @@ model Booking {
 
   @@index([resourceId, startTime])
   @@index([memberId])
+  @@index([locationId])
   @@map("bookings")
 }
 

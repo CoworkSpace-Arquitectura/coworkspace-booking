@@ -1,10 +1,24 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { BookingStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { EventsService } from '../events/events.service.js';
 import { SpaceClient } from './space.client.js';
 import { MembershipClient } from './membership.client.js';
 import { CreateBookingDto } from './dto/create-booking.dto.js';
+import type { Actor } from '../common/actor.js';
+
+export interface BookingFilters {
+  memberId?: string;
+  resourceId?: string;
+  locationId?: string;
+}
 
 const ACTIVE_STATUSES = [BookingStatus.CONFIRMED, BookingStatus.PENDING_PAYMENT];
 
@@ -19,7 +33,14 @@ export class BookingsService {
     private readonly membership: MembershipClient,
   ) {}
 
-  async create(dto: CreateBookingDto) {
+  async create(actor: Actor, dto: CreateBookingDto) {
+    // A nombre de quién: si no se indica, es para quien hace la petición.
+    const memberId = dto.memberId ?? actor.id;
+    const onBehalf = memberId !== actor.id;
+    if (onBehalf && actor.role === 'MEMBER') {
+      throw new ForbiddenException('Solo puedes hacer reservas a tu nombre');
+    }
+
     const startTime = new Date(dto.startTime);
     const endTime = new Date(dto.endTime);
     if (endTime <= startTime) {
@@ -29,8 +50,13 @@ export class BookingsService {
       throw new BadRequestException('No se puede reservar en el pasado');
     }
 
-    const subscription = await this.membership.getActiveSubscription(dto.memberId);
+    const subscription = await this.membership.getActiveSubscription(memberId);
     const resource = await this.space.getResource(dto.resourceType, dto.resourceId);
+
+    // Un gerente solo reserva a nombre de clientes en las sedes que tiene a cargo.
+    if (onBehalf && actor.role === 'MANAGER' && resource.location.managerId !== actor.id) {
+      throw new ForbiddenException('Solo puedes reservar para clientes en las sedes a tu cargo');
+    }
 
     const includedInPlan = subscription.plan.resourceAccess.includes(dto.resourceType);
     const hours = (endTime.getTime() - startTime.getTime()) / (60 * 60 * 1000);
@@ -58,7 +84,8 @@ export class BookingsService {
 
       const created = await tx.booking.create({
         data: {
-          memberId: dto.memberId,
+          memberId,
+          bookedBy: actor.id,
           resourceId: dto.resourceId,
           resourceType: dto.resourceType,
           locationId: resource.locationId,
@@ -84,6 +111,7 @@ export class BookingsService {
     await this.events.publish('booking.created', {
       bookingId: booking.id,
       memberId: booking.memberId,
+      bookedBy: booking.bookedBy,
       resourceId: booking.resourceId,
       resourceType: booking.resourceType,
       locationId: booking.locationId,
@@ -97,18 +125,35 @@ export class BookingsService {
     return booking;
   }
 
-  findAll(memberId?: string, resourceId?: string) {
-    return this.prisma.booking.findMany({
-      where: { memberId, resourceId },
-      orderBy: { startTime: 'asc' },
-    });
+  /**
+   * Socio: solo sus reservas. Gerente: las suyas o las de una sede a su cargo (locationId).
+   * Jefe: todas, con los filtros que quiera.
+   */
+  async findAll(actor: Actor, filters: BookingFilters = {}) {
+    const where = { ...filters };
+    if (actor.role === 'MEMBER') {
+      where.memberId = actor.id;
+    } else if (actor.role === 'MANAGER') {
+      if (filters.locationId) {
+        await this.ensureManages(actor, filters.locationId);
+      } else {
+        where.memberId = actor.id;
+      }
+    }
+    return this.prisma.booking.findMany({ where, orderBy: { startTime: 'asc' } });
   }
 
-  async findOne(id: string) {
+  /** Lista sin filtros de permisos: solo la usa Analytics por la ruta interna. */
+  findAllInternal() {
+    return this.prisma.booking.findMany({ orderBy: { startTime: 'asc' } });
+  }
+
+  async findOne(actor: Actor, id: string) {
     const booking = await this.prisma.booking.findUnique({ where: { id } });
     if (!booking) {
       throw new NotFoundException(`Reserva ${id} no encontrada`);
     }
+    await this.ensureCanSee(actor, booking);
     return booking;
   }
 
@@ -127,8 +172,8 @@ export class BookingsService {
     });
   }
 
-  async cancel(id: string) {
-    const booking = await this.findOne(id);
+  async cancel(actor: Actor, id: string) {
+    const booking = await this.findOne(actor, id);
     if (booking.status === BookingStatus.CANCELLED) {
       throw new ConflictException('La reserva ya está cancelada');
     }
@@ -141,7 +186,8 @@ export class BookingsService {
       memberId: cancelled.memberId,
       resourceId: cancelled.resourceId,
       startTime: cancelled.startTime.toISOString(),
-      reason: 'CANCELLED_BY_MEMBER',
+      reason: actor.id === cancelled.memberId ? 'CANCELLED_BY_MEMBER' : 'CANCELLED_BY_STAFF',
+      cancelledBy: actor.id,
     });
     return cancelled;
   }
@@ -184,5 +230,25 @@ export class BookingsService {
     }
     this.logger.log(`Reserva ${bookingId} liberada: ${reason}`);
     return true;
+  }
+
+  /** El dueño de la reserva, el jefe o el gerente de la sede pueden verla y cancelarla. */
+  private async ensureCanSee(actor: Actor, booking: { memberId: string; locationId: string }) {
+    if (booking.memberId === actor.id || actor.role === 'OWNER') {
+      return;
+    }
+    if (actor.role === 'MANAGER') {
+      await this.ensureManages(actor, booking.locationId);
+      return;
+    }
+    // A un socio no se le confirma que existe una reserva ajena.
+    throw new NotFoundException('Reserva no encontrada');
+  }
+
+  private async ensureManages(actor: Actor, locationId: string) {
+    const location = await this.space.getLocation(locationId);
+    if (location.managerId !== actor.id) {
+      throw new ForbiddenException('Esta sede no está a tu cargo');
+    }
   }
 }

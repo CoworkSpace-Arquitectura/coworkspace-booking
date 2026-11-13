@@ -1,10 +1,14 @@
 @spaceUrl = http://localhost:3001
 @membershipUrl = http://localhost:3002
 @bookingUrl = http://localhost:3004
+# Identidad que normalmente pone el Gateway (aquí llamamos directo a cada servicio)
+@jefeId = 00000000-0000-0000-0000-000000000001
 
 ### 1. Sede en Colombia (Space)
 # @name sedeCo
 POST {{spaceUrl}}/locations
+X-Member-Id: {{jefeId}}
+X-Member-Role: OWNER
 Content-Type: application/json
 
 { "name": "Sede Centro Saga", "city": "Bogotá", "address": "Calle 72 #10-20", "country": "CO", "currency": "COP" }
@@ -12,6 +16,8 @@ Content-Type: application/json
 ### 2. Sala en Colombia, $30.000 COP la hora (Space)
 # @name salaCo
 POST {{spaceUrl}}/rooms
+X-Member-Id: {{jefeId}}
+X-Member-Role: OWNER
 Content-Type: application/json
 
 { "locationId": "{{sedeCo.response.body.id}}", "name": "Sala Andes", "capacity": 6, "hourlyRate": 30000 }
@@ -19,6 +25,8 @@ Content-Type: application/json
 ### 3. Sede en México (Space)
 # @name sedeMx
 POST {{spaceUrl}}/locations
+X-Member-Id: {{jefeId}}
+X-Member-Role: OWNER
 Content-Type: application/json
 
 { "name": "Sede Roma Saga", "city": "Ciudad de México", "address": "Calle Orizaba 101", "country": "MX", "currency": "MXN" }
@@ -26,6 +34,8 @@ Content-Type: application/json
 ### 4. Sala en México, $350 MXN la hora (Space)
 # @name salaMx
 POST {{spaceUrl}}/rooms
+X-Member-Id: {{jefeId}}
+X-Member-Role: OWNER
 Content-Type: application/json
 
 { "locationId": "{{sedeMx.response.body.id}}", "name": "Sala Chapultepec", "capacity": 8, "hourlyRate": 350 }
@@ -53,6 +63,8 @@ Content-Type: application/json
 ### 8. Reservar la sala de Colombia 2 horas: $60.000 COP pendiente de pago
 # @name reservaCo
 POST {{bookingUrl}}/bookings
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 Content-Type: application/json
 
 {
@@ -66,6 +78,8 @@ Content-Type: application/json
 ### 9. Reservar la sala de México 2 horas: $700 MXN pendiente de pago
 # @name reservaMx
 POST {{bookingUrl}}/bookings
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 Content-Type: application/json
 
 {
@@ -78,15 +92,23 @@ Content-Type: application/json
 
 ### 10. Ver la reserva de Colombia (después de simular el pago aprobado)
 GET {{bookingUrl}}/bookings/{{reservaCo.response.body.id}}
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 
 ### 11. Ver la reserva de México (después de simular el pago rechazado)
 GET {{bookingUrl}}/bookings/{{reservaMx.response.body.id}}
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 
 ### Ver todas las reservas
 GET {{bookingUrl}}/bookings
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 
 ### Nueva reserva en México para probar el pago rechazado
 POST {{bookingUrl}}/bookings
+X-Member-Id: {{miembro.response.body.id}}
+X-Member-Role: MEMBER
 Content-Type: application/json
 
 {
