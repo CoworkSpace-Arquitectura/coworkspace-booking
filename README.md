@@ -8,3 +8,8 @@ Microservicio de reservas de salas y puestos. Usa bloqueo optimista para evitar 
 - **Puerto local:** 3004
 - **Depende de:** Space Service, Membership Service (REST) y Redis (eventos)
 - **Prueba de concurrencia:** `node scripts/prueba-concurrencia.mjs <memberId> <deskId>`
+
+## Documentación de la API
+
+- Swagger UI desplegado: https://coworkspace-booking.onrender.com/docs
+- En local: http://localhost:<PUERTO>/docs (el JSON OpenAPI está en `/docs-json`).

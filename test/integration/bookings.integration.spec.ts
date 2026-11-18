@@ -74,4 +74,10 @@ describe('Reservas (integración con la base de datos)', () => {
     const list = await request(app.getHttpServer()).get('/bookings').set(socio).expect(200);
     expect(list.body).toHaveLength(1);
   });
+
+  it('publica la documentación de la API (OpenAPI)', async () => {
+    const res = await request(app.getHttpServer()).get('/docs-json').expect(200);
+    expect(res.body.openapi).toBeDefined();
+    expect(Object.keys(res.body.paths).length).toBeGreaterThan(0);
+  });
 });
