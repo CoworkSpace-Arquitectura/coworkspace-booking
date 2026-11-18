@@ -13,6 +13,10 @@ import { SpaceClient } from './space.client.js';
 import { MembershipClient } from './membership.client.js';
 import { CreateBookingDto } from './dto/create-booking.dto.js';
 import type { Actor } from '../common/actor.js';
+import { businessCounter } from '../metrics.js';
+
+/** Métrica de negocio para Grafana: reservas creadas, por tipo de espacio y estado */
+const bookingsCreated = businessCounter('coworkspace_bookings_created_total', 'Reservas creadas', ['resource_type', 'status']);
 
 export interface BookingFilters {
   memberId?: string;
@@ -108,6 +112,7 @@ export class BookingsService {
       return created;
     });
 
+    bookingsCreated.inc({ resource_type: booking.resourceType, status: booking.status });
     await this.events.publish('booking.created', {
       bookingId: booking.id,
       memberId: booking.memberId,
